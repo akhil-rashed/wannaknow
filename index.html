@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Wanna know?</title>
+    <script>
+window.addEventListener("load", () => {
+  const music = document.getElementById("bg-music");
+
+  // Try autoplay (may fail silently)
+  music.play().catch(() => {
+    console.log("Autoplay blocked, waiting for user interaction");
+  });
+
+  // Unlock audio on first touch/click
+  document.body.addEventListener("click", () => {
+    music.play();
+  }, { once: true });
+});
+</script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        :root {
+            --accent-primary: rgba(255, 255, 255, 0.9);
+            --accent-secondary: rgba(255, 255, 255, 0.4);
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --font-main: 'Poppins', sans-serif;
+            --font-serif: 'Raleway', sans-serif;
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;600;800&family=Raleway:wght@100;300;400&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            cursor: none !important; /* Managed by custom cursor */
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            color: #fff;
+            font-family: var(--font-main);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        audio {
+  display: none;
+}
+
+        /* --- BACKGROUND ENGINE --- */
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background: radial-gradient(circle at center, #0a0a0f 0%, #000 100%);
+        }
+
+        .noise-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            opacity: 0.04;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3仿真%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+
+        /* --- LAYOUT COMPONENTS --- */
+        .stage {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            perspective: 1000px;
+        }
+
+        .stage.active {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        .premium-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid var(--glass-border);
+            border-radius: 40px;
+            padding: 4rem 3rem;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+            transform-style: preserve-3d;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                inset 0 1px 1px rgba(255,255,255,0.1);
+        }
+
+        /* --- DECORATIVE ELEMENTS --- */
+        .card-glow {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), rgba(255,255,255,0.08) 0%, transparent 50%);
+            border-radius: 40px;
+            pointer-events: none;
+        }
+
+        .corner-accent {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+            pointer-events: none;
+        }
+        .top-left { top: 20px; left: 20px; border-right: 0; border-bottom: 0; }
+        .bottom-right { bottom: 20px; right: 20px; border-left: 0; border-top: 0; }
+
+        /* --- TYPOGRAPHY --- */
+        .title-reveal {
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .title-text {
+            font-weight: 600;
+            font-size: 2.5rem;
+            letter-spacing: -1px;
+            background: linear-gradient(to bottom, #fff 40%, rgba(255,255,255,0.5) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .sub-text {
+            font-family: var(--font-serif);
+            font-weight: 300;
+            font-size: 1.1rem;
+            color: rgba(255,255,255,0.6);
+            line-height: 1.8;
+            margin-top: 2rem;
+        }
+
+        .text-divider {
+            width: 40px;
+            height: 1px;
+            background: rgba(255,255,255,0.3);
+            margin: 2rem auto;
+            transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .active .text-divider { width: 100px; }
+
+        /* --- UI NAVIGATION --- */
+        .nav-indicators {
+            position: fixed;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        indicator-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.4s ease;
+            position: relative;
+        }
+
+        indicator-dot.active {
+            background: #fff;
+            transform: scale(1.5);
+            box-shadow: 0 0 15px #fff;
+        }
+
+        .progress-wrap {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            text-align: center;
+        }
+
+        .progress-label {
+            font-size: 0.7rem;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.3);
+            margin-bottom: 10px;
+        }
+
+        /* --- LOADING SCREEN --- */
+        #loader {
+            position: fixed;
+            inset: 0;
+            background: #000;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .loader-bar {
+            width: 150px;
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+            position: relative;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        .loader-progress {
+            position: absolute;
+            height: 100%;
+            width: 0%;
+            background: #fff;
+        }
+
+        @media (max-width: 640px) {
+            .premium-card { padding: 3rem 1.5rem; }
+            .title-text { font-size: 1.8rem; }
+            .sub-text { font-size: 0.95rem; }
+            .nav-indicators { display: none; }
+        }
+    </style>
+</head>
+<body>
+<audio id="bg-music" loop>
+  <source src="dagabaaz.mp3" type="audio/mpeg">
+</audio>
+
+    <div id="loader">
+        <div style="font-weight: 200; letter-spacing: 8px; font-size: 0.8rem; text-transform: uppercase;">Initializing</div>
+        <div class="loader-bar"><div class="loader-progress" id="load-p"></div></div>
+    </div>
+
+    <div id="canvas-container"></div>
+    <div class="noise-overlay"></div>
+
+    <div class="cursor-follower" id="cursor-follower"></div>
+    <div class="cursor-dot" id="cursor-dot"></div>
+
+    <div class="nav-indicators">
+        <div class="indicator-dot active" data-index="0"></div>
+        <div class="indicator-dot" data-index="1"></div>
+        <div class="indicator-dot" data-index="2"></div>
+        <div class="indicator-dot" data-index="3"></div>
+    </div>
+
+    <section class="stage active" id="stage-0">
+        <div class="text-center" style="z-index: 20;">
+            <div id="intro-logo" style="margin-bottom: 2rem; opacity: 0;">
+                <i class="fa-thin fa-compass-drafting" style="font-size: 3rem; font-weight: 100;"></i>
+            </div>
+            <h2 id="intro-title" style="font-weight: 200; letter-spacing: 15px; text-transform: uppercase; opacity: 0; transform: translateY(20px);">Click koro</h2>
+            <div id="intro-hint" style="margin-top: 4rem; opacity: 0;">
+                <p style="font-size: 0.7rem; letter-spacing: 3px; color: rgba(255,255,255,0.);"> </p>
+            </div>
+        </div>
+    </section>
+
+    <section class="stage" id="stage-1">
+        <div class="premium-card">
+            <div class="card-glow"></div>
+            <div class="corner-accent top-left"></div>
+            <div class="corner-accent bottom-right"></div>
+            
+            <div class="text-center">
+                <div class="title-reveal">
+                    <h1 class="title-text">Jante chao?</h1>
+                </div>
+                <div class="text-divider"></div>
+                <p class="sub-text">
+                    Again click koro, secret bolar ache..🥹
+                </p>
+                <div style="margin-top: 3rem; opacity: 0.4; font-size: 0.8rem;">
+                    <i class="fa-solid fa-arrow-down-long"></i>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="stage" id="stage-2">
+        <div class="premium-card">
+            <div class="card-glow"></div>
+            <div class="corner-accent top-left"></div>
+            <div class="corner-accent bottom-right"></div>
+            
+            <div class="text-center">
+                <i class="fa-regular fa-eye-slash" style="color: rgba(255,255,255,0.3); margin-bottom: 1.5rem;"></i>
+                <div class="title-reveal">
+                    <h1 class="title-text">Uhm ekhoni nah</h1>
+                </div>
+                <div class="text-divider"></div>
+                <p class="sub-text">
+                    Are'h eto taratari nah, aro ekbar click to koro..🙏🏻😭
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section class="stage" id="stage-3">
+        <div class="premium-card" style="border-color: rgba(255,255,255,0.2);">
+            <div class="card-glow"></div>
+            <div class="text-center">
+                <h1 class="title-text" style="font-size: 1.2rem; letter-spacing: 2px;">Uhhm</h1>
+                <div class="text-divider"></div>
+                <p class="sub-text" style="font-size: 1rem; color: #fff;">
+                    <strong>So secret holo, don't reveal my secrets, please..🥹🤌🏻</strong> 
+                </p>
+                <div style="margin-top: 3rem;">
+                    <button onclick="location.reload()" style="background: #fff; color: #000; padding: 12px 30px; border-radius: 100px; font-size: 0.7rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; transition: 0.3s;">Again</button>
+                </div>
+            </div>
+        </div>
+    </section>
+    <script>
+        // --- CONFIG & STATE ---
+        let currentStage = 0;
+        const totalStages = 4;
+        let isTransitioning = false;
+
+        // --- THREE.JS BACKGROUND ---
+        const initSpace = () => {
+            const container = document.getElementById('canvas-container');
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Stars
+            const starGeo = new THREE.BufferGeometry();
+            const starCount = 6000;
+            const posArray = new Float32Array(starCount * 3);
+            
+            for(let i=0; i < starCount * 3; i++) {
+                posArray[i] = (Math.random() - 0.5) * 15;
+            }
+            starGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+
+            const starMat = new THREE.PointsMaterial({
+                size: 0.005,
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending
+            });
+
+            const starMesh = new THREE.Points(starGeo, starMat);
+            scene.add(starMesh);
+
+            camera.position.z = 3;
+
+            // Animation Loop
+            const animate = () => {
+                requestAnimationFrame(animate);
+                starMesh.rotation.y += 0.0005;
+                starMesh.rotation.x += 0.0002;
+                
+                // Mouse parallax
+                gsap.to(starMesh.rotation, {
+                    x: mouse.y * 0.1,
+                    y: mouse.x * 0.1,
+                    duration: 2
+                });
+
+                renderer.render(scene, camera);
+            };
+            animate();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        };
+
+        // --- INTERACTION ENGINE ---
+        const mouse = { x: 0, y: 0 };
+        const cursorFollower = document.getElementById('cursor-follower');
+        const cursorDot = document.getElementById('cursor-dot');
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = (e.clientX / window.innerWidth) - 0.5;
+            mouse.y = (e.clientY / window.innerHeight) - 0.5;
+
+            gsap.to(cursorDot, { x: e.clientX, y: e.clientY, duration: 0 });
+            gsap.to(cursorFollower, { x: e.clientX - 20, y: e.clientY - 20, duration: 0.3 });
+
+            // Magnetic Cards
+            const cards = document.querySelectorAll('.premium-card');
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.querySelector('.card-glow').style.setProperty('--x', `${x}px`);
+                card.querySelector('.card-glow').style.setProperty('--y', `${y}px`);
+                
+                if (currentStage > 0) {
+                    const centerX = rect.left + rect.width/2;
+                    const centerY = rect.top + rect.height/2;
+                    const tiltX = (e.clientY - centerY) / 20;
+                    const tiltY = (centerX - e.clientX) / 20;
+                    gsap.to(card, { rotateX: tiltX, rotateY: tiltY, duration: 0.5 });
+                }
+            });
+        });
+
+        // --- STAGE TRANSITIONS ---
+        const goToStage = (index) => {
+            if (isTransitioning || index === currentStage || index >= totalStages) return;
+            isTransitioning = true;
+
+            const prevStage = document.getElementById(`stage-${currentStage}`);
+            const nextStage = document.getElementById(`stage-${index}`);
+            const dots = document.querySelectorAll('.indicator-dot');
+
+            // Timeline for smooth sequence
+            const tl = gsap.timeline({
+                onComplete: () => {
+                    isTransitioning = false;
+                    currentStage = index;
+                }
+            });
+
+            // Outgoing
+            tl.to(prevStage, { 
+                opacity: 0, 
+                y: -50, 
+                filter: 'blur(10px)', 
+                duration: 0.8, 
+                ease: 'power3.inOut',
+                onComplete: () => {
+                    prevStage.classList.remove('active');
+                }
+            });
+
+            // Incoming
+            tl.set(nextStage, { opacity: 0, y: 50, filter: 'blur(10px)', visibility: 'visible' });
+            tl.add(() => {
+                nextStage.classList.add('active');
+                dots.forEach(d => d.classList.remove('active'));
+                dots[index].classList.add('active');
+                document.getElementById('phase-num').innerText = `0${index + 1}`;
+            });
+
+            tl.to(nextStage, { 
+                opacity: 1, 
+                y: 0, 
+                filter: 'blur(0px)', 
+                duration: 1, 
+                ease: 'power4.out' 
+            }, "-=0.2");
+
+            // Text animations within card
+            const title = nextStage.querySelector('.title-text');
+            if (title) {
+                tl.from(title, { y: 100, duration: 1, ease: 'power4.out' }, "-=0.8");
+            }
+        };
+
+        // --- INITIALIZATION ---
+        window.onload = () => {
+            initSpace();
+
+            // Loader Animation
+            gsap.to('#load-p', {
+                width: '100%',
+                duration: 2,
+                ease: 'power2.inOut',
+                onComplete: () => {
+                    gsap.to('#loader', {
+                        opacity: 0,
+                        duration: 1,
+                        onComplete: () => {
+                            document.getElementById('loader').style.display = 'none';
+                            startIntro();
+                        }
+                    });
+                }
+            });
+        };
+
+        const startIntro = () => {
+            const tl = gsap.timeline();
+            tl.to('#intro-logo', { opacity: 1, y: 0, duration: 1.5, ease: 'power4.out' })
+              .to('#intro-title', { opacity: 1, y: 0, duration: 1.5 }, "-=1")
+              .to('#intro-hint', { opacity: 1, duration: 2 }, "-=0.5");
+        };
+
+        // Click to proceed
+        window.addEventListener('mousedown', () => {
+            if (currentStage < totalStages - 1) {
+                goToStage(currentStage + 1);
+            }
+        });
+
+        // Dot navigation
+        document.querySelectorAll('.indicator-dot').forEach(dot => {
+            dot.addEventListener('click', (e) => {
+                e.stopPropagation();
+                goToStage(parseInt(dot.dataset.index));
+            });
+        });
+    </script>
+</body>
+</html>
